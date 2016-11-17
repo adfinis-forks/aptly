@@ -4,9 +4,11 @@ import (
 	"github.com/gin-gonic/gin"
 	ctx "github.com/smira/aptly/context"
 	"net/http"
+	"time"
 )
 
 var context *ctx.AptlyContext
+var readTimeout time.Duration
 
 // Router returns prebuilt with routes http.Handler
 func Router(c *ctx.AptlyContext) http.Handler {
@@ -14,6 +16,9 @@ func Router(c *ctx.AptlyContext) http.Handler {
 
 	router := gin.Default()
 	router.Use(gin.ErrorLogger())
+
+	timeout := context.Flags().Lookup("read-timeout").Value.Get().(int)
+	readTimeout = time.Duration(timeout) * time.Second
 
 	if context.Flags().Lookup("no-lock").Value.Get().(bool) {
 		// We use a goroutine to count the number of

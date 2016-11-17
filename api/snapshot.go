@@ -11,9 +11,8 @@ import (
 func apiSnapshotsList(c *gin.Context) {
 	SortMethodString := c.Request.URL.Query().Get("sort")
 
-	collection := context.CollectionFactory().SnapshotCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	db, _ := context.Database()
+	collection := deb.NewSnapshotCollection(db)
 
 	if SortMethodString == "" {
 		SortMethodString = "name"
@@ -46,8 +45,8 @@ func apiSnapshotsCreateFromMirror(c *gin.Context) {
 	}
 
 	collection := context.CollectionFactory().RemoteRepoCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	collection.Lock()
+	defer collection.Unlock()
 
 	snapshotCollection := context.CollectionFactory().SnapshotCollection()
 	snapshotCollection.Lock()
@@ -185,8 +184,8 @@ func apiSnapshotsCreateFromRepository(c *gin.Context) {
 	}
 
 	collection := context.CollectionFactory().LocalRepoCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	collection.Lock()
+	defer collection.Unlock()
 
 	snapshotCollection := context.CollectionFactory().SnapshotCollection()
 	snapshotCollection.Lock()
@@ -274,11 +273,17 @@ func apiSnapshotsUpdate(c *gin.Context) {
 
 // GET /api/snapshots/:name
 func apiSnapshotsShow(c *gin.Context) {
+	name := c.Params.ByName("name")
 	collection := context.CollectionFactory().SnapshotCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	ok := collection.TryLock(readTimeout)
+	if !ok {
+		err := fmt.Errorf("Unable to read packages for snapshot %s. Other process is locking resource.", name)
+		c.Fail(500, err)
+		return
+	}
+	defer collection.Unlock()
 
-	snapshot, err := collection.ByName(c.Params.ByName("name"))
+	snapshot, err := collection.ByName(name)
 	if err != nil {
 		c.Fail(404, err)
 		return
@@ -303,8 +308,8 @@ func apiSnapshotsDrop(c *gin.Context) {
 	defer snapshotCollection.Unlock()
 
 	publishedCollection := context.CollectionFactory().PublishedRepoCollection()
-	publishedCollection.RLock()
-	defer publishedCollection.RUnlock()
+	publishedCollection.Lock()
+	defer publishedCollection.Unlock()
 
 	snapshot, err := snapshotCollection.ByName(name)
 	if err != nil {
@@ -340,11 +345,17 @@ func apiSnapshotsDrop(c *gin.Context) {
 func apiSnapshotsDiff(c *gin.Context) {
 	onlyMatching := c.Request.URL.Query().Get("onlyMatching") == "1"
 
+	name := c.Params.ByName("name")
 	collection := context.CollectionFactory().SnapshotCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	ok := collection.TryLock(readTimeout)
+	if !ok {
+		err := fmt.Errorf("Unable to read snapshot %s. Other process is locking resource.", name)
+		c.Fail(500, err)
+		return
+	}
+	defer collection.Unlock()
 
-	snapshotA, err := collection.ByName(c.Params.ByName("name"))
+	snapshotA, err := collection.ByName(name)
 	if err != nil {
 		c.Fail(404, err)
 		return
@@ -390,11 +401,17 @@ func apiSnapshotsDiff(c *gin.Context) {
 
 // GET /api/snapshots/:name/packages
 func apiSnapshotsSearchPackages(c *gin.Context) {
+	name := c.Params.ByName("name")
 	collection := context.CollectionFactory().SnapshotCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	ok := collection.TryLock(readTimeout)
+	if !ok {
+		err := fmt.Errorf("Unable to read snapshot %s. Other process is locking resource.", name)
+		c.Fail(500, err)
+		return
+	}
+	defer collection.Unlock()
 
-	snapshot, err := collection.ByName(c.Params.ByName("name"))
+	snapshot, err := collection.ByName(name)
 	if err != nil {
 		c.Fail(404, err)
 		return

@@ -47,6 +47,7 @@ Example:
 
 	cmd.Flag.String("listen", ":8080", "host:port for HTTP listening")
 	cmd.Flag.Bool("no-lock", false, "don't lock the database")
+	cmd.Flag.Int("read-timeout", 2, "timeout in seconds GET requests wait for locking")
 
 	return cmd
 

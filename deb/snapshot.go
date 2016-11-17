@@ -11,7 +11,6 @@ import (
 	"log"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -162,7 +161,7 @@ func (s *Snapshot) Decode(input []byte) error {
 
 // SnapshotCollection does listing, updating/adding/deleting of Snapshots
 type SnapshotCollection struct {
-	*sync.RWMutex
+	*Mutex
 	db   database.Storage
 	list []*Snapshot
 }
@@ -170,8 +169,8 @@ type SnapshotCollection struct {
 // NewSnapshotCollection loads Snapshots from DB and makes up collection
 func NewSnapshotCollection(db database.Storage) *SnapshotCollection {
 	result := &SnapshotCollection{
-		RWMutex: &sync.RWMutex{},
-		db:      db,
+		Mutex: NewMutex(),
+		db:    db,
 	}
 
 	blobs := db.FetchByPrefix([]byte("S"))

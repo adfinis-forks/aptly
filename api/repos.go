@@ -15,11 +15,9 @@ import (
 func apiReposList(c *gin.Context) {
 	result := []*deb.LocalRepo{}
 
-	collection := context.CollectionFactory().LocalRepoCollection()
-	collection.RLock()
-	defer collection.RUnlock()
-
-	context.CollectionFactory().LocalRepoCollection().ForEach(func(r *deb.LocalRepo) error {
+	db, _ := context.Database()
+	collection := deb.NewLocalRepoCollection(db)
+	collection.ForEach(func(r *deb.LocalRepo) error {
 		result = append(result, r)
 		return nil
 	})
@@ -100,10 +98,8 @@ func apiReposEdit(c *gin.Context) {
 
 // GET /api/repos/:name
 func apiReposShow(c *gin.Context) {
-	collection := context.CollectionFactory().LocalRepoCollection()
-	collection.RLock()
-	defer collection.RUnlock()
-
+	db, _ := context.Database()
+	collection := deb.NewLocalRepoCollection(db)
 	repo, err := collection.ByName(c.Params.ByName("name"))
 	if err != nil {
 		c.Fail(404, err)
@@ -122,12 +118,12 @@ func apiReposDrop(c *gin.Context) {
 	defer collection.Unlock()
 
 	snapshotCollection := context.CollectionFactory().SnapshotCollection()
-	snapshotCollection.RLock()
-	defer snapshotCollection.RUnlock()
+	snapshotCollection.Lock()
+	defer snapshotCollection.Unlock()
 
 	publishedCollection := context.CollectionFactory().PublishedRepoCollection()
-	publishedCollection.RLock()
-	defer publishedCollection.RUnlock()
+	publishedCollection.Lock()
+	defer publishedCollection.Unlock()
 
 	repo, err := collection.ByName(c.Params.ByName("name"))
 	if err != nil {
@@ -160,11 +156,17 @@ func apiReposDrop(c *gin.Context) {
 
 // GET /api/repos/:name/packages
 func apiReposPackagesShow(c *gin.Context) {
+	name := c.Params.ByName("name")
 	collection := context.CollectionFactory().LocalRepoCollection()
-	collection.RLock()
-	defer collection.RUnlock()
+	ok := collection.TryLock(readTimeout)
+	if !ok {
+		err := fmt.Errorf("Unable to read packages of repo %s. Other process is locking resource.", name)
+		c.Fail(500, err)
+		return
+	}
+	defer collection.Unlock()
 
-	repo, err := collection.ByName(c.Params.ByName("name"))
+	repo, err := collection.ByName(name)
 	if err != nil {
 		c.Fail(404, err)
 		return
