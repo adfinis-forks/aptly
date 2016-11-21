@@ -21,7 +21,7 @@ endif
 all: test check system-test
 
 prepare:
-	go get -u github.com/mattn/gom
+	go get -u github.com/adfinis-forks/gom
 	$(GOM) $(GOM_ENVIRONMENT) install
 
 coverage.out:
