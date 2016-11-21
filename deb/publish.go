@@ -853,25 +853,17 @@ func (collection *PublishedRepoCollection) CheckDuplicate(repo *PublishedRepo) *
 }
 
 // Update stores updated information about repo in DB
-func (collection *PublishedRepoCollection) Update(repo *PublishedRepo) (err error) {
-	collection.db.StartBatch()
-	defer collection.db.ResetBatch()
-
-	err = collection.db.Put(repo.Key(), repo.Encode())
-	if err != nil {
-		return
-	}
+func (collection *PublishedRepoCollection) Update(repo *PublishedRepo) error {
+	batch := collection.db.StartBatch()
+	batch.Put(repo.Key(), repo.Encode())
 
 	if repo.SourceKind == SourceLocalRepo {
 		for component, item := range repo.sourceItems {
-			err = collection.db.Put(repo.RefKey(component), item.packageRefs.Encode())
-			if err != nil {
-				return
-			}
+			batch.Put(repo.RefKey(component), item.packageRefs.Encode())
 		}
 	}
-	err = collection.db.FinishBatch()
-	return
+
+	return collection.db.FinishBatch(batch)
 }
 
 // LoadComplete loads additional information for remote repo
@@ -1145,19 +1137,12 @@ func (collection *PublishedRepoCollection) Remove(publishedStorageProvider aptly
 		}
 	}
 
-	collection.db.StartBatch()
-	defer collection.db.ResetBatch()
-	err = collection.db.Delete(repo.Key())
-	if err != nil {
-		return err
-	}
+	batch := collection.db.StartBatch()
+	batch.Delete(repo.Key())
 
 	for _, component := range repo.Components() {
-		err = collection.db.Delete(repo.RefKey(component))
-		if err != nil {
-			return err
-		}
+		batch.Delete(repo.RefKey(component))
 	}
 
-	return collection.db.FinishBatch()
+	return collection.db.FinishBatch(batch)
 }
