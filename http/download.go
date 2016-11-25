@@ -47,7 +47,7 @@ func NewDownloader(downLimit int64, progress aptly.Progress) aptly.Downloader {
 		},
 	}
 
-	if downLimit > 0 {
+	if downLimit > 0 && progress != nil {
 		downloader.aggWriter = flowrate.NewWriter(progress, downLimit)
 	} else {
 		downloader.aggWriter = progress
@@ -70,7 +70,9 @@ func (downloader *downloaderImpl) Download(url string, destination string) error
 func (downloader *downloaderImpl) DownloadWithChecksum(url string, destination string,
 	expected *utils.ChecksumInfo, ignoreMismatch bool, maxTries int) error {
 
-	downloader.progress.Printf("Downloading %s...\n", url)
+	if downloader.progress != nil {
+		downloader.progress.Printf("Downloading %s...\n", url)
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -137,7 +139,11 @@ func (downloader *downloaderImpl) download(req *http.Request, url, destination s
 	defer outfile.Close()
 
 	checksummer := utils.NewChecksumWriter()
-	writers := []io.Writer{outfile, downloader.aggWriter}
+	writers := []io.Writer{outfile}
+
+	if downloader.progress != nil {
+		writers = append(writers, downloader.progress)
+	}
 
 	if expected != nil {
 		writers = append(writers, checksummer)
