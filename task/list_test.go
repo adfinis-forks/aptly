@@ -27,6 +27,8 @@ func (s *ListSuite) TestList(c *check.C) {
 	c.Check(task.State, check.Equals, SUCCEEDED)
 	output, _ := list.GetTaskOutputByID(task.ID)
 	c.Check(output, check.Equals, "Task succeeded")
+	detail, _ := list.GetTaskDetailByID(task.ID)
+	c.Check(detail, check.Equals, struct{}{})
 
 	task, err = list.RunTaskInBackground("Faulty task", nil, func(out *Output, detail *Detail) error {
 		detail.Store("Details")
@@ -42,7 +44,7 @@ func (s *ListSuite) TestList(c *check.C) {
 	c.Check(task.State, check.Equals, FAILED)
 	output, _ = list.GetTaskOutputByID(task.ID)
 	c.Check(output, check.Equals, "Test Progress\nTask failed with error: Task failed")
-	detail, _ := list.GetTaskDetailByID(task.ID)
+	detail, _ = list.GetTaskDetailByID(task.ID)
 	c.Check(detail, check.Equals, "Details")
 	_, deleteErr := list.DeleteTaskByID(task.ID)
 	c.Check(deleteErr, check.IsNil)
