@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/smira/aptly/deb"
 	"github.com/smira/aptly/pgp"
+	"github.com/smira/aptly/task"
 	"github.com/smira/aptly/utils"
 )
 
@@ -113,7 +114,9 @@ func apiPublishRepoOrSnapshot(c *gin.Context) {
 	}
 
 	var components []string
+	var names []string
 	var sources []interface{}
+	var resources []string
 	collectionFactory := context.NewCollectionFactory()
 
 	if b.SourceKind == "snapshot" {
@@ -123,6 +126,7 @@ func apiPublishRepoOrSnapshot(c *gin.Context) {
 
 		for _, source := range b.Sources {
 			components = append(components, source.Component)
+			names = append(names, source.Name)
 
 			snapshot, err = snapshotCollection.ByName(source.Name)
 			if err != nil {
@@ -130,6 +134,7 @@ func apiPublishRepoOrSnapshot(c *gin.Context) {
 				return
 			}
 
+			resources = append(resources, string(snapshot.ResourceKey()))
 			err = snapshotCollection.LoadComplete(snapshot)
 			if err != nil {
 				c.AbortWithError(500, fmt.Errorf("unable to publish: %s", err))
@@ -145,6 +150,7 @@ func apiPublishRepoOrSnapshot(c *gin.Context) {
 
 		for _, source := range b.Sources {
 			components = append(components, source.Component)
+			names = append(names, source.Name)
 
 			localRepo, err = localCollection.ByName(source.Name)
 			if err != nil {
@@ -152,6 +158,7 @@ func apiPublishRepoOrSnapshot(c *gin.Context) {
 				return
 			}
 
+			resources = append(resources, string(localRepo.Key()))
 			err = localCollection.LoadComplete(localRepo)
 			if err != nil {
 				c.AbortWithError(500, fmt.Errorf("unable to publish: %s", err))
@@ -164,49 +171,58 @@ func apiPublishRepoOrSnapshot(c *gin.Context) {
 		return
 	}
 
-	collection := collectionFactory.PublishedRepoCollection()
-
 	published, err := deb.NewPublishedRepo(storage, prefix, b.Distribution, b.Architectures, components, sources, collectionFactory)
 	if err != nil {
 		c.AbortWithError(500, fmt.Errorf("unable to publish: %s", err))
 		return
 	}
-	if b.Origin != "" {
-		published.Origin = b.Origin
-	}
-	if b.NotAutomatic != "" {
-		published.NotAutomatic = b.NotAutomatic
-	}
-	if b.ButAutomaticUpgrades != "" {
-		published.ButAutomaticUpgrades = b.ButAutomaticUpgrades
-	}
-	published.Label = b.Label
 
-	published.SkipContents = context.Config().SkipContentsPublishing
-	if b.SkipContents != nil {
-		published.SkipContents = *b.SkipContents
-	}
+	resources = append(resources, string(published.Key()))
+	collection := collectionFactory.PublishedRepoCollection()
 
-	duplicate := collection.CheckDuplicate(published)
-	if duplicate != nil {
-		collectionFactory.PublishedRepoCollection().LoadComplete(duplicate, collectionFactory)
-		c.AbortWithError(400, fmt.Errorf("prefix/distribution already used by another published repo: %s", duplicate))
+	taskName := fmt.Sprintf("Publish %s: %s", b.SourceKind, strings.Join(names, ", "))
+	task, conflictErr := runTaskInBackground(taskName, resources, func(out *task.Output, detail *task.Detail) error {
+		if b.Origin != "" {
+			published.Origin = b.Origin
+		}
+		if b.NotAutomatic != "" {
+			published.NotAutomatic = b.NotAutomatic
+		}
+		if b.ButAutomaticUpgrades != "" {
+			published.ButAutomaticUpgrades = b.ButAutomaticUpgrades
+		}
+		published.Label = b.Label
+
+		published.SkipContents = context.Config().SkipContentsPublishing
+		if b.SkipContents != nil {
+			published.SkipContents = *b.SkipContents
+		}
+
+		duplicate := collection.CheckDuplicate(published)
+		if duplicate != nil {
+			collectionFactory.PublishedRepoCollection().LoadComplete(duplicate, collectionFactory)
+			return fmt.Errorf("prefix/distribution already used by another published repo: %s", duplicate)
+		}
+
+		err := published.Publish(context.PackagePool(), context, collectionFactory, signer, out, b.ForceOverwrite)
+		if err != nil {
+			return fmt.Errorf("unable to publish: %s", err)
+		}
+
+		err = collection.Add(published)
+		if err != nil {
+			return fmt.Errorf("unable to save to DB: %s", err)
+		}
+
+		return nil
+	})
+
+	if conflictErr != nil {
+		c.AbortWithError(409, conflictErr)
 		return
 	}
 
-	err = published.Publish(context.PackagePool(), context, collectionFactory, signer, nil, b.ForceOverwrite)
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("unable to publish: %s", err))
-		return
-	}
-
-	err = collection.Add(published)
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("unable to save to DB: %s", err))
-		return
-	}
-
-	c.JSON(201, published)
+	c.JSON(202, task)
 }
 
 // PUT /publish/:prefix/:distribution
@@ -251,6 +267,8 @@ func apiPublishUpdateSwitch(c *gin.Context) {
 	}
 
 	var updatedComponents []string
+	var updatedSnapshots []string
+	var resources []string
 
 	if published.SourceKind == deb.SourceLocalRepo {
 		if len(b.Snapshots) > 0 {
@@ -284,6 +302,7 @@ func apiPublishUpdateSwitch(c *gin.Context) {
 
 			published.UpdateSnapshot(snapshotInfo.Component, snapshot)
 			updatedComponents = append(updatedComponents, snapshotInfo.Component)
+			updatedSnapshots = append(updatedSnapshots, snapshot.Name)
 		}
 	} else {
 		c.AbortWithError(500, fmt.Errorf("unknown published repository type"))
@@ -294,28 +313,36 @@ func apiPublishUpdateSwitch(c *gin.Context) {
 		published.SkipContents = *b.SkipContents
 	}
 
-	err = published.Publish(context.PackagePool(), context, collectionFactory, signer, nil, b.ForceOverwrite)
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("unable to update: %s", err))
-		return
-	}
-
-	err = collection.Update(published)
-	if err != nil {
-		c.AbortWithError(500, fmt.Errorf("unable to save to DB: %s", err))
-		return
-	}
-
-	if b.SkipCleanup == nil || !*b.SkipCleanup {
-		err = collection.CleanupPrefixComponentFiles(published.Prefix, updatedComponents,
-			context.GetPublishedStorage(storage), collectionFactory, nil)
+	resources = append(resources, string(published.Key()))
+	taskName := fmt.Sprintf("Update published %s (%s): %s", published.SourceKind, strings.Join(updatedComponents, " "), strings.Join(updatedSnapshots, ", "))
+	currTask, conflictErr := runTaskInBackground(taskName, resources, func(out *task.Output, detail *task.Detail) error {
+		err := published.Publish(context.PackagePool(), context, collectionFactory, signer, out, b.ForceOverwrite)
 		if err != nil {
-			c.AbortWithError(500, fmt.Errorf("unable to update: %s", err))
-			return
+			return fmt.Errorf("unable to update: %s", err)
 		}
+
+		err = collection.Update(published)
+		if err != nil {
+			return fmt.Errorf("unable to save to DB: %s", err)
+		}
+
+		if b.SkipCleanup == nil || !*b.SkipCleanup {
+			err = collection.CleanupPrefixComponentFiles(published.Prefix, updatedComponents,
+				context.GetPublishedStorage(storage), collectionFactory, out)
+			if err != nil {
+				return fmt.Errorf("unable to update: %s", err)
+			}
+		}
+
+		return nil
+	})
+
+	if conflictErr != nil {
+		c.AbortWithError(409, conflictErr)
+		return
 	}
 
-	c.JSON(200, published)
+	c.JSON(202, currTask)
 }
 
 // DELETE /publish/:prefix/:distribution
@@ -330,12 +357,29 @@ func apiPublishDrop(c *gin.Context) {
 	collectionFactory := context.NewCollectionFactory()
 	collection := collectionFactory.PublishedRepoCollection()
 
-	err := collection.Remove(context, storage, prefix, distribution,
-		collectionFactory, context.Progress(), force, skipCleanup)
+	published, err := collection.ByStoragePrefixDistribution(storage, prefix, distribution)
 	if err != nil {
 		c.AbortWithError(500, fmt.Errorf("unable to drop: %s", err))
 		return
 	}
 
-	c.JSON(200, gin.H{})
+	resources := []string{string(published.Key())}
+
+	taskName := fmt.Sprintf("Delete published %s (%s)", prefix, distribution)
+	currTask, conflictErr := runTaskInBackground(taskName, resources, func(out *task.Output, detail *task.Detail) error {
+		err := collection.Remove(context, storage, prefix, distribution,
+			collectionFactory, out, force, skipCleanup)
+		if err != nil {
+			return fmt.Errorf("unable to drop: %s", err)
+		}
+
+		return nil
+	})
+
+	if conflictErr != nil {
+		c.AbortWithError(409, conflictErr)
+		return
+	}
+
+	c.JSON(202, currTask)
 }

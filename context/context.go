@@ -21,6 +21,7 @@ import (
 	"github.com/smira/aptly/pgp"
 	"github.com/smira/aptly/s3"
 	"github.com/smira/aptly/swift"
+	"github.com/smira/aptly/task"
 	"github.com/smira/aptly/utils"
 	"github.com/smira/commander"
 	"github.com/smira/flag"
@@ -35,6 +36,7 @@ type AptlyContext struct {
 
 	progress          aptly.Progress
 	downloader        aptly.Downloader
+	taskList          *task.List
 	database          database.Storage
 	packagePool       aptly.PackagePool
 	publishedStorages map[string]aptly.PublishedStorage
@@ -194,24 +196,49 @@ func (context *AptlyContext) _progress() aptly.Progress {
 	return context.progress
 }
 
+// NewDownloader returns instance of new downloader with given progress
+func (context *AptlyContext) NewDownloader(progress aptly.Progress) aptly.Downloader {
+	context.Lock()
+	defer context.Unlock()
+
+	return context.newDownloader(progress)
+}
+
+// NewDownloader returns instance of new downloader with given progress without locking
+// so it can be used for internal usage.
+func (context *AptlyContext) newDownloader(progress aptly.Progress) aptly.Downloader {
+	var downloadLimit int64
+	limitFlag := context.flags.Lookup("download-limit")
+	if limitFlag != nil {
+		downloadLimit = limitFlag.Value.Get().(int64)
+	}
+	if downloadLimit == 0 {
+		downloadLimit = context.config().DownloadLimit
+	}
+	return http.NewDownloader(downloadLimit*1024, progress)
+}
+
 // Downloader returns instance of current downloader
 func (context *AptlyContext) Downloader() aptly.Downloader {
 	context.Lock()
 	defer context.Unlock()
 
 	if context.downloader == nil {
-		var downloadLimit int64
-		limitFlag := context.flags.Lookup("download-limit")
-		if limitFlag != nil {
-			downloadLimit = limitFlag.Value.Get().(int64)
-		}
-		if downloadLimit == 0 {
-			downloadLimit = context.config().DownloadLimit
-		}
-		context.downloader = http.NewDownloader(downloadLimit*1024, context._progress())
+		context.downloader = context.newDownloader(context._progress())
 	}
 
 	return context.downloader
+}
+
+// TaskList returns instance of current task list
+func (context *AptlyContext) TaskList() *task.List {
+	context.Lock()
+	defer context.Unlock()
+
+	if context.taskList == nil {
+		context.taskList = task.NewList()
+	}
+	return context.taskList
 }
 
 // DBPath builds path to database
