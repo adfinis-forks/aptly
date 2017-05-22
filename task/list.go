@@ -98,7 +98,7 @@ func (list *List) GetTaskDetailByID(ID int) (interface{}, error) {
 
 	detail := task.detail.Load()
 	if detail == nil {
-		return nil, fmt.Errorf("There are no details for task with id %v", ID)
+		return struct{}{}, nil
 	}
 
 	return detail, nil
