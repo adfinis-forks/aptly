@@ -130,7 +130,7 @@ func aptlyMirrorUpdate(cmd *commander.Command, args []string) error {
 	context.Progress().Printf("Download queue: %d items (%s)\n", count, utils.HumanBytes(downloadSize))
 
 	// Download from the queue
-	context.Progress().InitBar(downloadSize, true)
+	context.Progress().InitBar(downloadSize, true, aptly.BarMirrorUpdateDownloadPackages)
 
 	downloadQueue := make(chan int)
 
@@ -219,7 +219,7 @@ func aptlyMirrorUpdate(cmd *commander.Command, args []string) error {
 	}
 
 	// Import downloaded files
-	context.Progress().InitBar(int64(len(queue)), false)
+	context.Progress().InitBar(int64(len(queue)), false, aptly.BarMirrorUpdateImportFiles)
 
 	for idx := range queue {
 
