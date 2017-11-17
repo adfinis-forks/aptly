@@ -557,16 +557,21 @@ func (p *PublishedRepo) Publish(packagePool aptly.PackagePool, publishedStorageP
 
 	indexes := newIndexFiles(publishedStorage, basePath, tempDir, suffix)
 
+	var count int64
+	for _, list := range lists {
+		count = count + int64(list.Len())
+	}
+
+	if progress != nil {
+		progress.InitBar(count, false)
+	}
+
 	for component, list := range lists {
 		hadUdebs := false
 
 		// For all architectures, pregenerate packages/sources files
 		for _, arch := range p.Architectures {
 			indexes.PackageIndex(component, arch, false)
-		}
-
-		if progress != nil {
-			progress.InitBar(int64(list.Len()), false)
 		}
 
 		list.PrepareIndex()
@@ -659,10 +664,6 @@ func (p *PublishedRepo) Publish(packagePool aptly.PackagePool, publishedStorageP
 			}
 		}
 
-		if progress != nil {
-			progress.ShutdownBar()
-		}
-
 		udebs := []bool{false}
 		if hadUdebs {
 			udebs = append(udebs, true)
@@ -698,6 +699,7 @@ func (p *PublishedRepo) Publish(packagePool aptly.PackagePool, publishedStorageP
 	}
 
 	if progress != nil {
+		progress.ShutdownBar()
 		progress.Printf("Finalizing metadata files...\n")
 	}
 
