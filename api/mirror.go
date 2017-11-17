@@ -53,15 +53,15 @@ func apiMirrorsCreate(c *gin.Context) {
 		Name               string `binding:"required"`
 		ArchiveURL         string `binding:"required"`
 		Distribution       string
+		Filter             string
 		Components         []string
 		Architectures      []string
+		Keyrings           []string
 		DownloadSources    bool
 		DownloadUdebs      bool
-		Filter             string
 		FilterWithDeps     bool
 		SkipComponentCheck bool
 		IgnoreSignatures   bool
-		Keyrings           []string
 	}
 
 	b.DownloadSources = context.Config().DownloadSourcePackages
@@ -277,18 +277,18 @@ func apiMirrorsUpdate(c *gin.Context) {
 	var b struct {
 		Name                 string
 		Filter               string
+		Architectures        []string
+		Components           []string
+		Keyrings             []string
 		FilterWithDeps       bool
 		DownloadSources      bool
 		DownloadUdebs        bool
-		Architectures        []string
-		Components           []string
 		SkipComponentCheck   bool
-		MaxTries             int
 		IgnoreChecksums      bool
 		IgnoreSignatures     bool
-		Keyrings             []string
 		ForceUpdate          bool
 		SkipExistingPackages bool
+		MaxTries             int
 	}
 
 	collectionFactory := context.NewCollectionFactory()
