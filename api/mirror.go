@@ -277,11 +277,13 @@ func apiMirrorsUpdate(c *gin.Context) {
 
 	var b struct {
 		Name                 string
+		ArchiveURL           string
 		Filter               string
 		Architectures        []string
 		Components           []string
 		Keyrings             []string
 		FilterWithDeps       bool
+		DownloadInstaller    bool
 		DownloadSources      bool
 		DownloadUdebs        bool
 		SkipComponentCheck   bool
@@ -302,6 +304,7 @@ func apiMirrorsUpdate(c *gin.Context) {
 	}
 
 	b.Name = remote.Name
+	b.DownloadInstaller = remote.DownloadInstaller
 	b.DownloadUdebs = remote.DownloadUdebs
 	b.DownloadSources = remote.DownloadSources
 	b.SkipComponentCheck = remote.SkipComponentCheck
@@ -329,7 +332,12 @@ func apiMirrorsUpdate(c *gin.Context) {
 		}
 	}
 
+	if b.ArchiveURL != "" {
+		remote.SetArchiveRoot(b.ArchiveURL)
+	}
+
 	remote.Name = b.Name
+	remote.DownloadInstaller = b.DownloadInstaller
 	remote.DownloadUdebs = b.DownloadUdebs
 	remote.DownloadSources = b.DownloadSources
 	remote.SkipComponentCheck = b.SkipComponentCheck
@@ -485,6 +493,7 @@ func apiMirrorsUpdate(c *gin.Context) {
 						continue
 					}
 
+					task.Finished = true
 					taskFinished <- task
 				}
 			}()
@@ -494,13 +503,13 @@ func apiMirrorsUpdate(c *gin.Context) {
 		wg.Wait()
 		close(taskFinished)
 
-		if len(errors) > 0 {
-			return fmt.Errorf("unable to update: download errors:\n  %s", strings.Join(errors, "\n  "))
-		}
-
 		for idx := range queue {
 
 			task := &queue[idx]
+
+			if !task.Finished {
+				continue
+			}
 
 			// and import it back to the pool
 			task.File.PoolPath, err = context.PackagePool().Import(task.TempDownPath, task.File.Filename, &task.File.Checksums, true, collectionFactory.ChecksumCollection())
@@ -513,6 +522,10 @@ func apiMirrorsUpdate(c *gin.Context) {
 				additionalTask.File.PoolPath = task.File.PoolPath
 				additionalTask.File.Checksums = task.File.Checksums
 			}
+		}
+
+		if len(errors) > 0 {
+			return fmt.Errorf("unable to update: download errors:\n  %s", strings.Join(errors, "\n  "))
 		}
 
 		remote.FinalizeDownload(collectionFactory, out)
