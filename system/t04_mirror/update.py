@@ -398,9 +398,9 @@ class UpdateMirror24Test(BaseTest):
     longTest = False
     fixtureGpg = True
     fixtureCmds = [
-        "aptly -architectures=amd64 mirror create -keyring=aptlytest.gpg -filter='installer' -with-installer vivid http://mirror.yandex.ru/ubuntu/ vivid main restricted",
+        "aptly -architectures=amd64 mirror create -keyring=aptlytest.gpg -filter='installer' -with-installer trusty http://mirror.yandex.ru/ubuntu/ trusty main restricted",
     ]
-    runCmd = "aptly mirror update -keyring=aptlytest.gpg vivid"
+    runCmd = "aptly mirror update -keyring=aptlytest.gpg trusty"
     outputMatchPrepare = filterOutSignature
 
     def output_processor(self, output):
