@@ -3,8 +3,8 @@ package api
 import (
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/aptly-dev/aptly/task"
+	"github.com/gin-gonic/gin"
 )
 
 // GET /tasks
