@@ -1,5 +1,8 @@
 package task
 
+// AllResourcesKey to be used as resource key when all resources are needed
+const AllResourcesKey = "__all__"
+
 // ResourceConflictError represents a list tasks
 // using conflicitng resources
 type ResourceConflictError struct {
@@ -33,11 +36,28 @@ func (r *ResourcesSet) MarkInUse(resources []string, task *Task) {
 // is used by a task and if yes returns slice of such task
 func (r *ResourcesSet) UsedBy(resources []string) []Task {
 	var tasks []Task
+	var task *Task
+	var found bool
+
 	for _, resource := range resources {
-		task, found := r.set[resource]
+
+		if resource == AllResourcesKey {
+			for _, task := range r.set {
+				tasks = appendTask(tasks, task)
+			}
+
+			break
+		}
+
+		task, found = r.set[resource]
 		if found {
 			tasks = appendTask(tasks, task)
 		}
+	}
+
+	task, found = r.set[AllResourcesKey]
+	if found {
+		tasks = appendTask(tasks, task)
 	}
 
 	return tasks
