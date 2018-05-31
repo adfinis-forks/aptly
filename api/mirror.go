@@ -57,6 +57,7 @@ func apiMirrorsCreate(c *gin.Context) {
 		Components         []string
 		Architectures      []string
 		Keyrings           []string
+		DownloadInstaller  bool
 		DownloadSources    bool
 		DownloadUdebs      bool
 		FilterWithDeps     bool
@@ -92,7 +93,7 @@ func apiMirrorsCreate(c *gin.Context) {
 	}
 
 	repo, err := deb.NewRemoteRepo(b.Name, b.ArchiveURL, b.Distribution, b.Components, b.Architectures,
-		b.DownloadSources, b.DownloadUdebs)
+		b.DownloadSources, b.DownloadUdebs, b.DownloadInstaller)
 
 	if err != nil {
 		c.AbortWithError(400, fmt.Errorf("unable to create mirror: %s", err))
@@ -104,6 +105,7 @@ func apiMirrorsCreate(c *gin.Context) {
 	repo.SkipComponentCheck = b.SkipComponentCheck
 	repo.DownloadSources = b.DownloadSources
 	repo.DownloadUdebs = b.DownloadUdebs
+	repo.DownloadInstaller = b.DownloadInstaller
 
 	verifier, err := getVerifier(b.IgnoreSignatures, b.Keyrings)
 	if err != nil {
@@ -282,6 +284,7 @@ func apiMirrorsUpdate(c *gin.Context) {
 		Components           []string
 		Keyrings             []string
 		FilterWithDeps       bool
+		DownloadInstaller    bool
 		DownloadSources      bool
 		DownloadUdebs        bool
 		SkipComponentCheck   bool
@@ -302,6 +305,7 @@ func apiMirrorsUpdate(c *gin.Context) {
 	}
 
 	b.Name = remote.Name
+	b.DownloadInstaller = remote.DownloadInstaller
 	b.DownloadUdebs = remote.DownloadUdebs
 	b.DownloadSources = remote.DownloadSources
 	b.SkipComponentCheck = remote.SkipComponentCheck
@@ -368,7 +372,7 @@ func apiMirrorsUpdate(c *gin.Context) {
 			b.MaxTries = 1
 		}
 
-		err = remote.DownloadPackageIndexes(out, downloader, collectionFactory, b.SkipComponentCheck, b.MaxTries)
+		err = remote.DownloadPackageIndexes(out, downloader, verifier, collectionFactory, b.SkipComponentCheck, b.MaxTries)
 		if err != nil {
 			return fmt.Errorf("unable to update: %s", err)
 		}
