@@ -80,7 +80,7 @@ func aptlyPackageShow(cmd *commander.Command, args []string) error {
 	result := q.Query(collectionFactory.PackageCollection())
 
 	err = result.ForEach(func(p *deb.Package) error {
-		p.Stanza().WriteTo(w, p.IsSource, false)
+		p.Stanza().WriteTo(w, p.IsSource, false, false)
 		w.Flush()
 		fmt.Printf("\n")
 
